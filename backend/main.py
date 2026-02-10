@@ -59,19 +59,39 @@ async def upload(resume: UploadFile, job_description: str = Form(...)):
 
 
 
+from azure.cognitiveservices.speech import SpeechConfig, SpeechRecognizer, AudioConfig
+
+import os
+
+AZURE_SPEECH_KEY = os.getenv("AZURE_SPEECH_KEY")
+AZURE_SPEECH_REGION = os.getenv("AZURE_SPEECH_REGION")
+
 @app.post("/answer")
-async def answer(session_id: str = Form(...), transcript: str = Form(...)):
+async def answer(session_id: str = Form(...), audio: UploadFile = None, transcript: str = Form(None)):
     """
-    Receive an answer, evaluate it, generate feedback and the next question.
+    Receive an answer as audio or text, transcribe if audio, evaluate, generate feedback and the next question.
     """
     try:
         session = get_session(session_id)
         if not session:
             raise HTTPException(status_code=404, detail="Session not found.")
 
+        answer_text = transcript
+        if audio is not None:
+            audio_bytes = await audio.read()
+            temp_audio_path = f"/tmp/{audio.filename}"
+            with open(temp_audio_path, "wb") as f:
+                f.write(audio_bytes)
+            speech_config = SpeechConfig(subscription=AZURE_SPEECH_KEY, region=AZURE_SPEECH_REGION)
+            audio_config = AudioConfig(filename=temp_audio_path)
+            recognizer = SpeechRecognizer(speech_config=speech_config, audio_config=audio_config)
+            result = recognizer.recognize_once()
+            answer_text = result.text
+            os.remove(temp_audio_path)
+
         question = session["current_question"]
-        feedback = evaluate_answer(question, transcript)
-        session["answers"].append(transcript)
+        feedback = evaluate_answer(question, answer_text)
+        session["answers"].append(answer_text)
 
         next_question = generate_question(
             session["resume"],

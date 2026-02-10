@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 
 export default function App() {
 
@@ -7,6 +7,47 @@ export default function App() {
   const [feedback, setFeedback] = useState(null);
   const [transcript, setTranscript] = useState("");
   const [loading, setLoading] = useState(false);
+  const [recording, setRecording] = useState(false);
+  const [audioBlob, setAudioBlob] = useState(null);
+  const mediaRecorderRef = useRef(null);
+  const chunks = useRef([]);
+  // Voice recording logic
+  const startRecording = async () => {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    mediaRecorderRef.current = new window.MediaRecorder(stream);
+    mediaRecorderRef.current.ondataavailable = (e) => chunks.current.push(e.data);
+    mediaRecorderRef.current.onstop = () => {
+      const blob = new Blob(chunks.current, { type: "audio/wav" });
+      setAudioBlob(blob);
+      chunks.current = [];
+    };
+    mediaRecorderRef.current.start();
+    setRecording(true);
+  };
+
+  const stopRecording = () => {
+    mediaRecorderRef.current.stop();
+    setRecording(false);
+  };
+
+  async function submitVoiceAnswer() {
+    setLoading(true);
+    try {
+      const form = new FormData();
+      form.append("session_id", sessionId);
+      form.append("audio", audioBlob, "answer.wav");
+      const res = await fetch("http://4.210.233.81:8000/answer", {
+        method: "POST",
+        body: form,
+      });
+      const data = await res.json();
+      setFeedback(data.feedback);
+      setQuestion(data.next_question);
+      setAudioBlob(null);
+    } finally {
+      setLoading(false);
+    }
+  }
 
   async function upload(e) {
     e.preventDefault();
@@ -67,13 +108,23 @@ export default function App() {
           <textarea
             value={transcript}
             onChange={(e) => setTranscript(e.target.value)}
-            placeholder="Type your answer (voice later)"
+            placeholder="Type your answer or use voice below"
             disabled={loading}
           />
           <br />
           <button onClick={submitAnswer} disabled={loading}>
             {loading ? "Submitting..." : "Submit Answer"}
           </button>
+          <div style={{ margin: '20px 0' }}>
+            <button onClick={recording ? stopRecording : startRecording} disabled={loading}>
+              {recording ? "Stop Recording" : "Start Voice Answer"}
+            </button>
+            {audioBlob && (
+              <button onClick={submitVoiceAnswer} disabled={loading} style={{ marginLeft: 10 }}>
+                {loading ? "Submitting..." : "Upload Voice Answer"}
+              </button>
+            )}
+          </div>
           {loading && (
             <div style={{ marginTop: 10, color: '#888' }}>Waiting for AI response...</div>
           )}
