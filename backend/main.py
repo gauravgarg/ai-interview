@@ -1,3 +1,4 @@
+import subprocess
 from fastapi import FastAPI, UploadFile, Form, HTTPException, File
 from fastapi.middleware.cors import CORSMiddleware
 import uuid
@@ -86,14 +87,25 @@ async def answer(session_id: str = Form(...), audio: UploadFile = File(None), tr
             with open(temp_audio_path, "wb") as f:
                 f.write(audio_bytes)
             print(f"Audio file written to {temp_audio_path}, size={len(audio_bytes)} bytes")
-            speech_config = SpeechConfig(subscription=AZURE_SPEECH_KEY, region=AZURE_SPEECH_REGION)
-            audio_config = AudioConfig(filename=temp_audio_path)
-            recognizer = SpeechRecognizer(speech_config=speech_config, audio_config=audio_config)
-            result = recognizer.recognize_once()
-            print(f"Azure Speech result: {result.text}")
-            answer_text = result.text
-            os.remove(temp_audio_path)
-            print(f"Temp audio file {temp_audio_path} removed.")
+            # Convert to 16kHz, 16-bit, mono WAV using ffmpeg
+            converted_path = temp_audio_path + "_converted.wav"
+            try:
+                subprocess.run([
+                    "ffmpeg", "-y", "-i", temp_audio_path,
+                    "-ar", "16000", "-ac", "1", "-f", "wav", converted_path
+                ], check=True)
+                print(f"Audio converted to {converted_path}")
+                speech_config = SpeechConfig(subscription=AZURE_SPEECH_KEY, region=AZURE_SPEECH_REGION)
+                audio_config = AudioConfig(filename=converted_path)
+                recognizer = SpeechRecognizer(speech_config=speech_config, audio_config=audio_config)
+                result = recognizer.recognize_once()
+                print(f"Azure Speech result: {result.text}")
+                answer_text = result.text
+            finally:
+                os.remove(temp_audio_path)
+                if os.path.exists(converted_path):
+                    os.remove(converted_path)
+                print(f"Temp files {temp_audio_path} and {converted_path} removed.")
         else:
             print("No audio file provided, using transcript field.")
 
