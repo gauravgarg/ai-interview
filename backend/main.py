@@ -1,4 +1,5 @@
 import subprocess
+import concurrent.futures
 from fastapi import FastAPI, UploadFile, Form, HTTPException, File
 from fastapi.middleware.cors import CORSMiddleware
 import uuid
@@ -111,7 +112,16 @@ async def answer(session_id: str = Form(...), audio: UploadFile = File(None), tr
 
         print(f"Answer text to evaluate: {answer_text}")
         question = session["current_question"]
-        feedback = evaluate_answer(question, answer_text)
+        try:
+            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+                future = executor.submit(evaluate_answer, question, answer_text)
+                feedback = future.result(timeout=300)  # 30 seconds timeout
+        except concurrent.futures.TimeoutError:
+            print("evaluate_answer timed out.")
+            raise HTTPException(status_code=504, detail="AI evaluation timed out. Please try again later.")
+        except Exception as eval_exc:
+            print(f"Error during evaluate_answer: {eval_exc}")
+            raise HTTPException(status_code=503, detail="AI evaluation service is currently unavailable. Please try again later.")
         session["answers"].append(answer_text)
 
         next_question = generate_question(
