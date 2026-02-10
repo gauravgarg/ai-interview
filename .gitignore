@@ -1,0 +1,14 @@
+.env
+.DS_Store
+backend/data/
+frontend/node_modules/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+venv/
+env/
+dist/
+build/
+coverage/
+*.log

@@ -1,0 +1,6 @@
+/* Minimal CSS to fix build error */
+body {
+  font-family: sans-serif;
+  margin: 0;
+  padding: 0;
+}
